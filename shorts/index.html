@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>All YouTube Shorts</title>
+    <style>
+        body {
+            margin: 0;
+            background: #111;
+        }
+
+        #shorts {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(112.5px, 1fr));
+        }
+
+        #shorts a {
+            padding: 4px 2.25px;
+        }
+
+        #shorts img {
+            display: block;
+            width: 100%;
+            aspect-ratio: 9 / 16;
+            object-fit: cover;
+        }
+    </style>
+</head>
+<body>
+    <div id="shorts"></div>
+    <script>
+        const MAX_SHORTS = 1444;
+        const grid = document.getElementById("shorts");
+        const events = new EventSource(`/events?history=${MAX_SHORTS}`);
+        events.addEventListener("short", event => {
+            const short = JSON.parse(event.data);
+
+            const link = document.createElement("a");
+            link.href = short.url;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+
+            const image = document.createElement("img");
+            image.src = `https://i.ytimg.com/vi/${short.video_id}/hqdefault.jpg`;
+            image.loading = "lazy";
+
+            link.appendChild(image);
+            grid.prepend(link);
+            if (grid.children.length > MAX_SHORTS) {
+                grid.lastElementChild.remove();
+            }
+        });
+    </script>
+</body>
+</html>

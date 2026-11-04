@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>All YouTube Videos</title>
+    <style>
+        body {
+            margin: 0;
+            background: #111;
+        }
+
+        #videos {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        }
+
+        #videos a {
+            padding: 2.25px 4px;
+        }
+
+        #videos img {
+            display: block;
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            object-fit: cover;
+        }
+    </style>
+</head>
+<body>
+    <div id="videos"></div>
+    <script>
+        const MAX_VIDEOS = 1444;
+        const grid = document.getElementById("videos");
+        const events = new EventSource(`/events?history=${MAX_VIDEOS}`);
+        events.addEventListener("video", event => {
+            const video = JSON.parse(event.data);
+
+            const link = document.createElement("a");
+            link.href = video.url;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+
+            const image = document.createElement("img");
+            image.src = `https://i.ytimg.com/vi/${video.video_id}/hqdefault.jpg`;
+            image.loading = "lazy";
+
+            link.appendChild(image);
+            grid.prepend(link);
+            if (grid.children.length > MAX_VIDEOS) {
+                grid.lastElementChild.remove();
+            }
+        });
+    </script>
+</body>
+</html>
