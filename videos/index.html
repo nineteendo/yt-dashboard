@@ -37,7 +37,8 @@
             const link = document.createElement("a");
             link.href = video.url;
             link.target = "_blank";
-            link.rel = "noopener noreferrer";
+            link.rel = "noopener";
+            link.title = video.title
 
             const image = document.createElement("img");
             image.src = `https://i.ytimg.com/vi/${video.video_id}/hqdefault.jpg`;
