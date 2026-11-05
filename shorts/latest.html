@@ -24,9 +24,9 @@
             events.addEventListener("short", event => {
                 const short = JSON.parse(event.data);
                 const state = player.getPlayerState();
-                if ([YT.PlayerState.ENDED, YT.PlayerState.PLAYING, YT.PlayerState.BUFFERING].includes(state)) {
+                if ([YT.PlayerState.ENDED, YT.PlayerState.PLAYING].includes(state)) {
                     player.loadVideoById(short.video_id);
-                } else {
+                } else if ([YT.PlayerState.PAUSED, YT.PlayerState.CUED].includes(state)) {
                     player.cueVideoById(short.video_id);
                 }
             });
