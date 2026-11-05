@@ -53,9 +53,12 @@ log.setLevel(logging.DEBUG)
 # Application state (memory only)
 # --------------------------------------------------
 
-events: deque[tuple[str, str]] = deque(maxlen=EVENT_HISTORY)
-current_event_id = 0
-event_condition = asyncio.Condition()
+event_queues: dict[str, deque[str]] = {
+    "short": deque(maxlen=EVENT_HISTORY),
+    "video": deque(maxlen=EVENT_HISTORY),
+}
+event_counts = {"short": 0, "video": 0}
+event_conditions = {"short": asyncio.Condition(), "video": asyncio.Condition()}
 pending: dict[str, asyncio.Future[Any]] = {}
 channels: list[dict[str, str]] = []
 
@@ -180,48 +183,53 @@ app = FastAPI(lifespan=_lifespan)
 # --------------------------------------------------
 
 async def _broadcast(event: dict[str, Any]):
-    async with event_condition:
-        global current_event_id
-        current_event_id += 1
-        if event["url"].startswith(SHORTS_BASE_URL):
-            event_type = "short"
-        else:
-            event_type = "video"
+    if event["url"].startswith(SHORTS_BASE_URL):
+        event_type = "short"
+    else:
+        event_type = "video"
 
+    async with (event_condition := event_conditions[event_type]):
+        event_counts[event_type] += 1
         message = json.dumps(event, end="", separators=(",", ":"))
-        events.append((event_type, message))
+        event_queues[event_type].append(message)
         event_condition.notify_all()
 
 
 @app.get("/events")
 async def _events(request: Request):
+    params = request.query_params
+    if (event_type := params.get("type")) not in {"short", "video"}:
+        return Response(status_code=400)
+
     async def stream():
+        event_count = event_counts[event_type]
         if (last_event_id := request.headers.get("last-event-id")) is None:
-            history = request.query_params.get("history", "1")
+            history = params.get("history", "1")
             try:
-                last_event_id = current_event_id - int(history)
+                last_event_id = event_count - int(history)
             except ValueError:
                 log.warning("Invalid history: %s", history)
-                last_event_id = current_event_id - 1
+                last_event_id = event_count - 1
         else:
             try:
                 last_event_id = int(last_event_id)
             except ValueError:
                 log.warning("Invalid last event id: %s", last_event_id)
-                last_event_id = current_event_id - 1
+                last_event_id = event_count - 1
 
         while True:
-            start = max(0, len(events) - current_event_id + last_event_id)
-            for i in range(start, len(events)):
-                event_type, message = events[i]
+            event_queue = event_queues[event_type]
+            event_count = event_counts[event_type]
+            start = max(0, len(event_queue) - event_count + last_event_id)
+            for i in range(start, len(event_queue)):
                 yield (
-                    f"id: {current_event_id - len(events) + start + 1}\n"
+                    f"id: {event_count - len(event_queue) + start + 1}\n"
                     f"event: {event_type}\n"
-                    f"data: {message}\n\n"
+                    f"data: {event_queue[i]}\n\n"
                 )
 
-            last_event_id = current_event_id
-            async with event_condition:
+            last_event_id = event_count
+            async with (event_condition := event_conditions[event_type]):
                 try:
                     await asyncio.wait_for(
                         event_condition.wait(), timeout=KEEPALIVE_TIMEOUT

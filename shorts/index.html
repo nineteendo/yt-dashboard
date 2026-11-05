@@ -30,7 +30,7 @@
     <script>
         const MAX_SHORTS = 1444;
         const grid = document.getElementById("shorts");
-        const events = new EventSource(`/events?history=${MAX_SHORTS}`);
+        const events = new EventSource(`/events?type=short&history=${MAX_SHORTS}`);
         events.addEventListener("short", event => {
             const short = JSON.parse(event.data);
 
