@@ -23,7 +23,12 @@
             const events = new EventSource("/events");
             events.addEventListener("short", event => {
                 const short = JSON.parse(event.data);
-                player.loadVideoById(short.video_id);
+                const state = player.getPlayerState();
+                if ([YT.PlayerState.ENDED, YT.PlayerState.PLAYING, YT.PlayerState.BUFFERING].includes(state)) {
+                    player.loadVideoById(short.video_id);
+                } else {
+                    player.cueVideoById(short.video_id);
+                }
             });
         }
 
