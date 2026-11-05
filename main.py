@@ -53,7 +53,7 @@ log.setLevel(logging.DEBUG)
 # Application state (memory only)
 # --------------------------------------------------
 
-events: deque[tuple[int, str, str]] = deque(maxlen=EVENT_HISTORY)
+events: deque[tuple[str, str]] = deque(maxlen=EVENT_HISTORY)
 current_event_id = 0
 event_condition = asyncio.Condition()
 pending: dict[str, asyncio.Future[Any]] = {}
@@ -189,7 +189,7 @@ async def _broadcast(event: dict[str, Any]):
             event_type = "video"
 
         message = json.dumps(event, end="", separators=(",", ":"))
-        events.append((current_event_id, event_type, message))
+        events.append((event_type, message))
         event_condition.notify_all()
 
 
@@ -213,9 +213,9 @@ async def _events(request: Request):
         while True:
             start = max(0, len(events) - current_event_id + last_event_id)
             for i in range(start, len(events)):
-                event_id, event_type, message = events[i]
+                event_type, message = events[i]
                 yield (
-                    f"id: {event_id}\n"
+                    f"id: {current_event_id - len(events) + start + 1}\n"
                     f"event: {event_type}\n"
                     f"data: {message}\n\n"
                 )
