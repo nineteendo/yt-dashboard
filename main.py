@@ -27,7 +27,6 @@ LEASE_SECONDS = 864000
 RENEW_BEFORE = timedelta(days=1)
 CONFIRM_TIMEOUT = 5
 KEEPALIVE_TIMEOUT = 15
-RETRY_DELAY = 60
 
 BASE_DIR = Path(__file__).resolve().parent
 CHANNELS_FILE = BASE_DIR / "channels.csv"
@@ -139,14 +138,6 @@ async def _subscribe_all():
                     len(expiries),
                     len(channels)
                 )
-
-            if len(expiries) < len(channels):
-                log.warning(
-                    "%d subscriptions still pending. Retrying in %d seconds.",
-                    len(channels) - len(expiries),
-                    RETRY_DELAY
-                )
-                await asyncio.sleep(RETRY_DELAY)
 
     earliest_expiry = min(expiries.values())
     _save_expiry(earliest_expiry)
