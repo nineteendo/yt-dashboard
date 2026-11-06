@@ -57,13 +57,15 @@
                             activeIndex !== index
                             && [YT.PlayerState.PLAYING, YT.PlayerState.CUED].includes(event.data)
                         ) {
-                            const paused = players[1 - index].getPlayerState() === YT.PlayerState.PAUSED;
+                            const state = players[1 - index].getPlayerState();
                             const muted = players[1 - index].isMuted();
                             players[1 - index].pauseVideo();
                             players[1 - index].mute();
                             document.getElementById(otherId).classList.remove("active");
-                            if (paused) {
+                            if ([YT.PlayerState.PAUSED, YT.PlayerState.CUED].includes(state)) {
                                 players[index].pauseVideo();
+                            } else {
+                                players[index].playVideo();
                             }
                             if (!muted) {
                                 players[index].unMute();
