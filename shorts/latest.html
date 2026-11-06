@@ -20,7 +20,9 @@
     <div id="player"></div>
     <script>
         function playLatest() {
-            const events = new EventSource("/events?type=short");
+            const params = new URLSearchParams(document.location.search);
+            params.append("history", "1");
+            const events = new EventSource(`/shorts/events?${params}`);
             events.addEventListener("short", event => {
                 const short = JSON.parse(event.data);
                 const state = player.getPlayerState();

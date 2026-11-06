@@ -30,7 +30,7 @@
     <script>
         const MAX_VIDEOS = 1444;
         const grid = document.getElementById("videos");
-        const events = new EventSource(`/events?type=video&history=${MAX_VIDEOS}`);
+        const events = new EventSource(`/videos/events${document.location.search}`);
         events.addEventListener("video", event => {
             const video = JSON.parse(event.data);
 

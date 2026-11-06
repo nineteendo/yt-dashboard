@@ -17,7 +17,9 @@ from fastapi.responses import EventSourceResponse, FileResponse
 # Configuration
 # --------------------------------------------------
 
-CHANNEL_LIMIT = 3000
+EVENT_TYPES = ["short", "video"]
+THRESHOLDS = [30, 300, 3000]
+CHANNEL_LIMIT = max(THRESHOLDS)
 BATCH_SIZE = 10
 EVENT_HISTORY = 1444
 
@@ -53,14 +55,20 @@ log.setLevel(logging.DEBUG)
 # Application state (memory only)
 # --------------------------------------------------
 
-event_queues: dict[str, deque[str]] = {
-    "short": deque(maxlen=EVENT_HISTORY),
-    "video": deque(maxlen=EVENT_HISTORY),
+event_queues: dict[tuple[str, int], deque[str]] = {
+    (event_type, threshold): deque(maxlen=EVENT_HISTORY)
+    for threshold in THRESHOLDS for event_type in EVENT_TYPES
 }
-event_counts = {"short": 0, "video": 0}
-event_conditions = {"short": asyncio.Condition(), "video": asyncio.Condition()}
+event_counts = {
+    (event_type, threshold): 0
+    for threshold in THRESHOLDS for event_type in EVENT_TYPES
+}
+event_conditions = {
+    (event_type, threshold): asyncio.Condition()
+    for threshold in THRESHOLDS for event_type in EVENT_TYPES
+}
 pending: dict[str, asyncio.Future[Any]] = {}
-channels: list[dict[str, str]] = []
+channels: dict[str, int] = {}
 
 
 # --------------------------------------------------
@@ -98,7 +106,7 @@ async def _subscribe_one(channel_id: str, http: httpx.AsyncClient):
         response = await http.post(HUB_URL, data=payload)
         response.raise_for_status()
         return await asyncio.wait_for(future, timeout=CONFIRM_TIMEOUT)
-    except Exception as error:
+    except (httpx.HTTPStatusError, TimeoutError) as error:
         log.warning("Subscription failed for %s: %s", channel_id, error)
         return None
     finally:
@@ -115,18 +123,16 @@ async def _subscribe_all():
     async with httpx.AsyncClient() as http:
         while len(expiries) < len(channels):
             missing = [
-                channel
-                for channel in channels
-                if channel["id"] not in expiries
+                channel for channel in channels if channel not in expiries
             ]
             for start in range(0, len(missing), BATCH_SIZE):
                 batch = missing[start: start + BATCH_SIZE]
                 results = await asyncio.gather(
-                    *[_subscribe_one(channel["id"], http) for channel in batch]
+                    *[_subscribe_one(channel, http) for channel in batch]
                 )
                 for channel, expiry in zip(batch, results):
                     if expiry is not None:
-                        expiries[channel["id"]] = expiry
+                        expiries[channel] = expiry
 
                 log.debug(
                     "Confirmed %d / %d subscriptions",
@@ -162,8 +168,12 @@ async def _subscription_manager():
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     with CHANNELS_FILE.open("r", encoding="utf-8-sig", newline="") as file:
-        all_channels = list(csv.DictReader(file))
-        channels[:] = all_channels[0:CHANNEL_LIMIT]
+        all_channel_ids = [channel["id"] for channel in csv.DictReader(file)]
+        channels.clear()
+        channels.update({
+            channel_id: i
+            for i, channel_id in enumerate(all_channel_ids[0:CHANNEL_LIMIT])
+        })
 
     log.debug("Loaded %d channels.", len(channels))
     subscription_task = asyncio.create_task(_subscription_manager())
@@ -188,28 +198,37 @@ async def _broadcast(event: dict[str, Any]):
     else:
         event_type = "video"
 
-    async with (event_condition := event_conditions[event_type]):
-        event_counts[event_type] += 1
-        message = json.dumps(event, end="", separators=(",", ":"))
-        event_queues[event_type].append(message)
-        event_condition.notify_all()
+    message = json.dumps(event, end="", separators=(",", ":"))
+    for threshold in THRESHOLDS:
+        if channels[event["channel_id"]] < threshold:
+            event_condition = event_conditions[event_type, threshold]
+            async with event_condition:
+                event_counts[event_type, threshold] += 1
+                event_queues[event_type, threshold].append(message)
+                event_condition.notify_all()
 
 
-@app.get("/events")
-async def _events(request: Request):
+async def _events(request: Request, event_type: str):
     params = request.query_params
-    if (event_type := params.get("type")) not in {"short", "video"}:
-        return Response(status_code=400)
+    top = params.get("top", CHANNEL_LIMIT)
+    try:
+        top = int(top)
+        threshold = min(
+            (threshold for threshold in THRESHOLDS if threshold >= top),
+            default=CHANNEL_LIMIT,
+        )
+    except ValueError:
+        threshold = CHANNEL_LIMIT
 
     async def stream():
-        event_count = event_counts[event_type]
+        event_count = event_counts[event_type, threshold]
         if (last_event_id := request.headers.get("last-event-id")) is None:
-            history = params.get("history", "1")
+            history = params.get("history", EVENT_HISTORY)
             try:
                 last_event_id = event_count - int(history)
             except ValueError:
                 log.warning("Invalid history: %s", history)
-                last_event_id = event_count - 1
+                last_event_id = event_count - EVENT_HISTORY
         else:
             try:
                 last_event_id = int(last_event_id)
@@ -217,19 +236,21 @@ async def _events(request: Request):
                 log.warning("Invalid last event id: %s", last_event_id)
                 last_event_id = event_count - 1
 
+        yield "retry: 5000\n\n"
         while True:
-            event_queue = event_queues[event_type]
-            event_count = event_counts[event_type]
+            event_queue = event_queues[event_type, threshold]
+            event_count = event_counts[event_type, threshold]
+            event_condition = event_conditions[event_type, threshold]
             start = max(0, len(event_queue) - event_count + last_event_id)
             for i in range(start, len(event_queue)):
                 yield (
-                    f"id: {event_count - len(event_queue) + start + 1}\n"
+                    f"id: {event_count - len(event_queue) + i + 1}\n"
                     f"event: {event_type}\n"
                     f"data: {event_queue[i]}\n\n"
                 )
 
             last_event_id = event_count
-            async with (event_condition := event_conditions[event_type]):
+            async with event_condition:
                 try:
                     await asyncio.wait_for(
                         event_condition.wait(), timeout=KEEPALIVE_TIMEOUT
@@ -242,6 +263,16 @@ async def _events(request: Request):
         stream(),
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.get("/shorts/events")
+async def _short_events(request: Request):
+    return await _events(request, "short")
+
+
+@app.get("/videos/events")
+async def _video_events(request: Request):
+    return await _events(request, "video")
 
 
 # --------------------------------------------------
@@ -285,7 +316,8 @@ async def _callback_notification(request: Request):
 
     for entry in root.findall(f".//{{{ATOM_NS}}}entry"):
         def get_text(namespace, name):
-            element = entry.find(f"{{{namespace}}}{name}")
+            # pylint: disable-next=W0640
+            element = entry.find(f"{{{namespace}}}{name}")  # noqa: B023
             return None if element is None else element.text
 
         link = entry.find(f"{{{ATOM_NS}}}link")
@@ -299,14 +331,19 @@ async def _callback_notification(request: Request):
         }
         if (
             video["video_id"] is not None
-            and video["updated"] is not None
+            and video["channel_id"] is not None
+            and video["title"] is not None
             and video["published"] is not None
+            and video["updated"] is not None
             and video["url"] is not None
         ):
-            if timedelta(minutes=1) <= (
-                datetime.fromisoformat(video["updated"])
-                - datetime.fromisoformat(video["published"])
-            ) <= timedelta(minutes=1, seconds=5):
+            if (
+                video["channel_id"] in channels
+                and timedelta(minutes=1) <= (
+                    datetime.fromisoformat(video["updated"])
+                    - datetime.fromisoformat(video["published"])
+                ) <= timedelta(minutes=1, seconds=5)
+            ):
                 log.debug(
                     "New video: %s (%s)", video["title"], video["channel_id"]
                 )
