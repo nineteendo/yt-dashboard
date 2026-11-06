@@ -9,15 +9,20 @@
             background: #111;
         }
 
-        #player {
+        #player-a, #player-b {
             max-width: 100%;
             max-height: 100%;
             aspect-ratio: 16 / 9;
         }
+
+        #player-a:not(.active), #player-b:not(.active) {
+            display: none;
+        }
     </style>
 </head>
 <body>
-    <div id="player"></div>
+    <div id="player-a"></div>
+    <div id="player-b"></div>
     <script>
         function playLatest() {
             const params = new URLSearchParams(document.location.search);
@@ -25,25 +30,58 @@
             const events = new EventSource(`/videos/events?${params}`);
             events.addEventListener("video", event => {
                 const video = JSON.parse(event.data);
-                const state = player.getPlayerState();
+                const state = players[activeIndex].getPlayerState();
                 if ([YT.PlayerState.ENDED, YT.PlayerState.PLAYING].includes(state)) {
-                    player.loadVideoById(video.video_id);
+                    players[1 - activeIndex].loadVideoById(video.video_id);
                 } else if ([YT.PlayerState.PAUSED, YT.PlayerState.CUED].includes(state)) {
-                    player.cueVideoById(video.video_id);
+                    players[1 - activeIndex].cueVideoById(video.video_id);
                 }
             });
         }
 
-        let player;
-        window.onYouTubeIframeAPIReady = () => {
-            player = new YT.Player("player", {
+        function createPlayer(id, otherId, index) {
+            return new YT.Player(id, {
                 width: "auto",
                 height: "auto",
                 events: {
-                    onReady: playLatest
+                    onReady: () => {
+                        ready++;
+                        if (ready == 2) {
+                            players[1].mute();
+                            document.getElementById("player-a").classList.add("active");
+                            playLatest();
+                        }
+                    },
+                    onStateChange: event => {
+                        if (
+                            activeIndex !== index
+                            && [YT.PlayerState.PLAYING, YT.PlayerState.CUED].includes(event.data)
+                        ) {
+                            const muted = players[1 - index].isMuted();
+                            players[1 - index].pauseVideo();
+                            players[1 - index].mute();
+                            document.getElementById(otherId).classList.remove("active");
+                            if (!muted) {
+                                players[index].unMute();
+                            }
+                            document.getElementById(id).classList.add("active");
+                            activeIndex = index;
+                        }
+                    }
                 }
             });
-        };
+        }
+        
+
+        let players;
+        let ready = 0;
+        let activeIndex = 0;
+        window.onYouTubeIframeAPIReady = () => {
+            players = [
+                createPlayer("player-a", "player-b", 0),
+                createPlayer("player-b", "player-a", 1)
+            ];
+        }
     </script>
     <script src="https://www.youtube.com/iframe_api"></script>
 </body>
