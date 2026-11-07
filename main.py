@@ -18,7 +18,7 @@ from fastapi.responses import EventSourceResponse, FileResponse
 # --------------------------------------------------
 
 EVENT_TYPES = ["short", "video"]
-THRESHOLDS = [30, 300, 3000]
+THRESHOLDS = [50, 500, 5000]
 CHANNEL_LIMIT = max(THRESHOLDS)
 BATCH_SIZE = 10
 EVENT_HISTORY = 1444
