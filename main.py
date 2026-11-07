@@ -105,7 +105,7 @@ async def _subscribe_one(channel_id: str, http: httpx.AsyncClient):
         response = await http.post(HUB_URL, data=payload)
         response.raise_for_status()
         return await asyncio.wait_for(future, timeout=CONFIRM_TIMEOUT)
-    except (httpx.HTTPStatusError, TimeoutError) as error:
+    except (httpx.HTTPError, TimeoutError) as error:
         log.warning("Subscription failed for %s: %s", channel_id, error)
         return None
     finally:
