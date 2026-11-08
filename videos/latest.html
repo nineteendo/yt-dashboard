@@ -3,15 +3,18 @@
 <head>
     <title>Latest YouTube Video</title>
     <style>
-        body {
-            margin: 8px;
-            height: calc(100vh - 16px);
+        html {
             background: #111;
         }
 
+        body {
+            margin: 8px;
+            height: calc(100vh - 16px);
+            container-type: size;
+        }
+
         #player-a, #player-b {
-            max-width: 100%;
-            max-height: 100%;
+            width: min(100cqw, 177.7778cqh);
             aspect-ratio: 16 / 9;
         }
 
