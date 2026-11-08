@@ -33,7 +33,7 @@
                 const state = players[activeIndex].getPlayerState();
                 if ([YT.PlayerState.ENDED, YT.PlayerState.PLAYING].includes(state)) {
                     players[1 - activeIndex].loadVideoById(short.video_id);
-                } else if ([YT.PlayerState.PAUSED, YT.PlayerState.CUED].includes(state)) {
+                } else if ([YT.PlayerState.UNSTARTED, YT.PlayerState.PAUSED, YT.PlayerState.CUED].includes(state)) {
                     players[1 - activeIndex].cueVideoById(short.video_id);
                 }
             });
@@ -62,7 +62,7 @@
                             players[1 - index].pauseVideo();
                             players[1 - index].mute();
                             document.getElementById(otherId).classList.remove("active");
-                            if ([YT.PlayerState.PAUSED, YT.PlayerState.CUED].includes(state)) {
+                            if ([YT.PlayerState.UNSTARTED, YT.PlayerState.PAUSED, YT.PlayerState.CUED].includes(state)) {
                                 players[index].pauseVideo();
                             } else {
                                 players[index].playVideo();
