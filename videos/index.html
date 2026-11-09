@@ -5,7 +5,7 @@
     <style>
         body {
             margin: 0;
-            background: #111;
+            background-color: #111;
         }
 
         #videos {
@@ -23,14 +23,48 @@
             aspect-ratio: 16 / 9;
             object-fit: cover;
         }
+
+        #stats {
+            position: fixed;
+            bottom: 0;
+            right: 0;
+            padding: 12px 16px;
+            background-color: #000d;
+            color: #fff;
+            font-family: monospace;
+            display: grid;
+            grid-template-columns: repeat(2, auto);
+            gap: 10px 24px;
+        }
+
+        #stats span {
+            display: block;
+            color: #aaa;
+            font-size: 10px;
+        }
+
+        #stats strong {
+            font-size: 20px;
+        }
     </style>
 </head>
 <body>
+    <div id="stats">
+        <div><span>NEW VIDEOS</span><strong id="count">0</strong></div>
+        <div><span>ELAPSED</span><strong id="elapsed">00:00</strong></div>
+        <div><span>VIDEOS/MIN</span><strong id="arrival">0</strong></div>
+        <div><span>AVG. INTERVAL</span><strong id="interval">-</strong></div>
+    </div>
     <div id="videos"></div>
     <script>
         const MAX_VIDEOS = 1444;
+        let count = 0;
+        const startTime = performance.now();
         const grid = document.getElementById("videos");
         const events = new EventSource(`/videos/events${document.location.search}`);
+        events.addEventListener("history", event => {
+            count -= Number(event.data);
+        });
         events.addEventListener("video", event => {
             const video = JSON.parse(event.data);
 
@@ -46,10 +80,25 @@
 
             link.appendChild(image);
             grid.prepend(link);
+            count++;
             if (grid.children.length > MAX_VIDEOS) {
                 grid.lastElementChild.remove();
             }
         });
+        function updateStats() {
+            document.getElementById("count").textContent = count.toLocaleString();
+            if (startTime !== null) {
+                const elapsed = (performance.now() - startTime) / 1000;
+                const mm = String(Math.floor(elapsed / 60)).padStart(2, "0")
+                const ss = String(Math.floor(elapsed % 60)).padStart(2, "0")
+                document.getElementById("elapsed").textContent = `${mm}:${ss}`;
+                if (count > 1) {
+                    document.getElementById("arrival").textContent = (count / (elapsed / 60)).toFixed(0);
+                    document.getElementById("interval").textContent = (elapsed / count).toFixed(2) + "s";
+                }
+            }
+        }
+        setInterval(updateStats, 1000);
     </script>
 </body>
 </html>

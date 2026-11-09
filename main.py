@@ -228,6 +228,10 @@ async def _events(request: Request, event_type: str):
                 last_event_id = event_count - 1
 
         yield "retry: 5000\n\n"
+        yield (
+            "event: history\n"
+            f"data: {max(0, event_count - max(0, last_event_id))}\n\n"
+        )
         while True:
             event_queue = event_queues[event_type, threshold]
             event_count = event_counts[event_type, threshold]
