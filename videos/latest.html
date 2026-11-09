@@ -14,7 +14,7 @@
         }
 
         #player-a, #player-b {
-            width: min(100cqw, 177.7778cqh);
+            max-width: 177.7778cqh;
             aspect-ratio: 16 / 9;
         }
 
@@ -44,7 +44,7 @@
 
         function createPlayer(id, otherId, index) {
             return new YT.Player(id, {
-                width: "auto",
+                width: "100%",
                 height: "auto",
                 events: {
                     onReady: () => {
