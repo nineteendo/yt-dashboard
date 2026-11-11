@@ -50,8 +50,8 @@
 </head>
 <body>
     <div id="stats">
-        <div><span>NEW VIDEOS</span><strong id="video_count">0</strong></div>
         <div><span>ACTIVE CHANNELS</span><strong id="channel_count">0</strong></div>
+        <div><span>NEW VIDEOS</span><strong id="video_count">&mdash;</strong></div>
         <div><span>TIME ELAPSED</span><strong id="elapsed">00:00:00</strong></div>
         <div><span>VIDEOS/MIN</span><strong id="arrival">0</strong></div>
     </div>
@@ -90,8 +90,10 @@
             }
         });
         function updateStats() {
-            document.getElementById("video_count").textContent = videoCount.toLocaleString();
             document.getElementById("channel_count").textContent = channels.size.toLocaleString();
+            if (videoCount !== channels.size) {
+                document.getElementById("video_count").textContent = videoCount.toLocaleString();
+            }
             if (startTime !== null) {
                 const elapsed = (performance.now() - startTime) / 1000;
                 const hh = String(Math.floor(elapsed / 3600)).padStart(2, "0")
