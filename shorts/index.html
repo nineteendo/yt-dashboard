@@ -89,6 +89,9 @@
                 grid.lastElementChild.remove();
             }
         });
+        events.addEventListener("done", event => {
+            events.close();
+        });
         function updateStats() {
             document.getElementById("channel_count").textContent = channels.size.toLocaleString();
             if (shortCount !== channels.size) {

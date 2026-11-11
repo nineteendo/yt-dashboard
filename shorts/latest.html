@@ -44,6 +44,9 @@
                     }
                 }
             });
+            events.addEventListener("done", event => {
+                events.close();
+            });
         }
 
         function createPlayer(id, otherId, index) {

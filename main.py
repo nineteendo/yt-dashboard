@@ -1,6 +1,7 @@
 import asyncio
 import csv
 import logging
+import time
 import xml.etree.ElementTree as ET
 from collections import deque
 from contextlib import asynccontextmanager, suppress
@@ -54,6 +55,14 @@ log.setLevel(logging.DEBUG)
 # Application state (memory only)
 # --------------------------------------------------
 
+event_windows: dict[tuple[str, int], deque[tuple[float, str]]] = {
+    (event_type, threshold): deque()
+    for threshold in THRESHOLDS for event_type in EVENT_TYPES
+}
+best_event_windows: dict[tuple[str, int], deque[tuple[float, str]]] = {
+    (event_type, threshold): deque()
+    for threshold in THRESHOLDS for event_type in EVENT_TYPES
+}
 event_queues: dict[tuple[str, int], deque[str]] = {
     (event_type, threshold): deque(maxlen=EVENT_HISTORY)
     for threshold in THRESHOLDS for event_type in EVENT_TYPES
@@ -189,13 +198,21 @@ async def _broadcast(event: dict[str, Any]):
     else:
         event_type = "video"
 
+    loop = asyncio.get_running_loop()
+    now = time.monotonic()
     message = json.dumps(event, end="", separators=(",", ":"))
     for threshold in THRESHOLDS:
+        event_key = event_type, threshold
         if channels[event["channel_id"]] < threshold:
-            event_condition = event_conditions[event_type, threshold]
-            async with event_condition:
-                event_counts[event_type, threshold] += 1
-                event_queues[event_type, threshold].append(message)
+            event_window = event_windows[event_key]
+            event_window.append((now, message))
+            loop.call_later(60, event_window.popleft)
+            if len(event_window) > len(best_event_windows[event_key]):
+                best_event_windows[event_key] = event_window.copy()
+
+            async with (event_condition := event_conditions[event_key]):
+                event_counts[event_key] += 1
+                event_queues[event_key].append(message)
                 event_condition.notify_all()
 
 
@@ -212,20 +229,35 @@ async def _events(request: Request, event_type: str):
         threshold = CHANNEL_LIMIT
 
     async def stream():
-        event_count = event_counts[event_type, threshold]
-        if (last_event_id := request.headers.get("last-event-id")) is None:
-            history = params.get("history", EVENT_HISTORY)
-            try:
-                last_event_id = event_count - int(history)
-            except ValueError:
-                log.warning("Invalid history: %s", history)
-                last_event_id = event_count - EVENT_HISTORY
-        else:
-            try:
-                last_event_id = int(last_event_id)
-            except ValueError:
-                log.warning("Invalid last event id: %s", last_event_id)
-                last_event_id = event_count - 1
+        if params.get("replay", "0") == "1":
+            yield (
+                "event: history\n"
+                "data: 0\n\n"
+            )
+            last_timestamp = None
+            for timestamp, message in best_event_windows[event_key]:
+                if last_timestamp is not None:
+                    await asyncio.sleep(timestamp - last_timestamp)
+
+                yield (
+                    f"event: {event_type}\n"
+                    f"data: {message}\n\n"
+                )
+                last_timestamp = timestamp
+
+            yield (
+                "event: done\n"
+                "data: \n\n"
+            )
+            return
+
+        event_count = event_counts[event_key]
+        history = params.get("history", EVENT_HISTORY)
+        try:
+            last_event_id = event_count - int(history)
+        except ValueError:
+            log.warning("Invalid history: %s", history)
+            last_event_id = event_count - EVENT_HISTORY
 
         yield "retry: 5000\n\n"
         yield (
@@ -233,19 +265,17 @@ async def _events(request: Request, event_type: str):
             f"data: {max(0, event_count - max(0, last_event_id))}\n\n"
         )
         while True:
-            event_queue = event_queues[event_type, threshold]
-            event_count = event_counts[event_type, threshold]
-            event_condition = event_conditions[event_type, threshold]
+            event_queue = event_queues[event_key]
+            event_count = event_counts[event_key]
             start = max(0, len(event_queue) - event_count + last_event_id)
             for i in range(start, len(event_queue)):
                 yield (
-                    f"id: {event_count - len(event_queue) + i + 1}\n"
                     f"event: {event_type}\n"
                     f"data: {event_queue[i]}\n\n"
                 )
 
             last_event_id = event_count
-            async with event_condition:
+            async with (event_condition := event_conditions[event_key]):
                 try:
                     await asyncio.wait_for(
                         event_condition.wait(), timeout=KEEPALIVE_TIMEOUT
@@ -254,6 +284,7 @@ async def _events(request: Request, event_type: str):
                     yield ": keep-alive\n\n"
                     continue
 
+    event_key = event_type, threshold
     return EventSourceResponse(
         stream(),
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
