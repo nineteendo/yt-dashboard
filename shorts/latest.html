@@ -38,9 +38,9 @@
                 const inactiveState = players[1 - activeIndex].getPlayerState();
                 if (![activeState, inactiveState].includes(YT.PlayerState.BUFFERING)) {
                     if ([YT.PlayerState.UNSTARTED, YT.PlayerState.ENDED, YT.PlayerState.PLAYING].includes(activeState)) {
-                        players[1 - activeIndex].loadVideoById(video.video_id);
+                        players[1 - activeIndex].loadVideoById(short.video_id);
                     } else {
-                        players[1 - activeIndex].cueVideoById(video.video_id);
+                        players[1 - activeIndex].cueVideoById(short.video_id);
                     }
                 }
             });
