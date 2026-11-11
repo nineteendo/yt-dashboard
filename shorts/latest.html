@@ -37,7 +37,7 @@
                 const activeState = players[activeIndex].getPlayerState();
                 const inactiveState = players[1 - activeIndex].getPlayerState();
                 if (![activeState, inactiveState].includes(YT.PlayerState.BUFFERING)) {
-                    if ([YT.PlayerState.ENDED, YT.PlayerState.PLAYING].includes(activeState)) {
+                    if ([YT.PlayerState.UNSTARTED, YT.PlayerState.ENDED, YT.PlayerState.PLAYING].includes(activeState)) {
                         players[1 - activeIndex].loadVideoById(video.video_id);
                     } else {
                         players[1 - activeIndex].cueVideoById(video.video_id);
@@ -69,7 +69,7 @@
                             players[1 - index].pauseVideo();
                             players[1 - index].mute();
                             document.getElementById(otherId).classList.remove("active");
-                            if ([YT.PlayerState.ENDED, YT.PlayerState.PLAYING, YT.PlayerState.BUFFERING].includes(state)) {
+                            if ([YT.PlayerState.UNSTARTED, YT.PlayerState.ENDED, YT.PlayerState.PLAYING, YT.PlayerState.BUFFERING].includes(state)) {
                                 players[index].playVideo();
                             } else {
                                 players[index].pauseVideo();
