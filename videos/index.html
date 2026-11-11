@@ -50,20 +50,21 @@
 </head>
 <body>
     <div id="stats">
-        <div><span>NEW VIDEOS</span><strong id="count">0</strong></div>
+        <div><span>NEW VIDEOS</span><strong id="video_count">0</strong></div>
+        <div><span>ACTIVE CHANNELS</span><strong id="channel_count">0</strong></div>
         <div><span>TIME ELAPSED</span><strong id="elapsed">00:00:00</strong></div>
         <div><span>VIDEOS/MIN</span><strong id="arrival">0</strong></div>
-        <div><span>AVG. INTERVAL</span><strong id="interval">-</strong></div>
     </div>
     <div id="videos"></div>
     <script>
         const MAX_VIDEOS = 1444;
-        let count = 0;
+        let videoCount = 0;
+        const channels = new Set();
         const startTime = performance.now();
         const grid = document.getElementById("videos");
         const events = new EventSource(`/videos/events${document.location.search}`);
         events.addEventListener("history", event => {
-            count -= Number(event.data);
+            videoCount -= Number(event.data);
         });
         events.addEventListener("video", event => {
             const video = JSON.parse(event.data);
@@ -80,23 +81,24 @@
 
             link.appendChild(image);
             grid.prepend(link);
-            count++;
+            videoCount++;
+            if (videoCount > 0) {
+                channels.add(video.channel_id)
+            }
             if (grid.children.length > MAX_VIDEOS) {
                 grid.lastElementChild.remove();
             }
         });
         function updateStats() {
-            document.getElementById("count").textContent = count.toLocaleString();
+            document.getElementById("video_count").textContent = videoCount.toLocaleString();
+            document.getElementById("channel_count").textContent = channels.size.toLocaleString();
             if (startTime !== null) {
                 const elapsed = (performance.now() - startTime) / 1000;
                 const hh = String(Math.floor(elapsed / 3600)).padStart(2, "0")
                 const mm = String(Math.floor(elapsed / 60) % 60).padStart(2, "0")
                 const ss = String(Math.floor(elapsed % 60)).padStart(2, "0")
                 document.getElementById("elapsed").textContent = `${hh}:${mm}:${ss}`;
-                document.getElementById("arrival").textContent = (count / (elapsed / 60)).toFixed(0);
-                if (count > 0) {
-                    document.getElementById("interval").textContent = (elapsed / count).toFixed(2) + "s";
-                }
+                document.getElementById("arrival").textContent = (videoCount / (elapsed / 60)).toFixed(0);
             }
         }
         setInterval(updateStats, 1000);

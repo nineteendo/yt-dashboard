@@ -50,20 +50,21 @@
 </head>
 <body>
     <div id="stats">
-        <div><span>NEW SHORTS</span><strong id="count">0</strong></div>
+        <div><span>NEW SHORTS</span><strong id="short_count">0</strong></div>
+        <div><span>ACTIVE CHANNELS</span><strong id="channel_count">0</strong></div>
         <div><span>TIME ELAPSED</span><strong id="elapsed">00:00</strong></div>
         <div><span>SHORTS/MIN</span><strong id="arrival">0</strong></div>
-        <div><span>AVG. INTERVAL</span><strong id="interval">-</strong></div>
     </div>
     <div id="shorts"></div>
     <script>
         const MAX_SHORTS = 1444;
-        let count = 0;
-        let startTime = performance.now();
+        let shortCount = 0;
+        const channels = new Set();
+        const startTime = performance.now();
         const grid = document.getElementById("shorts");
         const events = new EventSource(`/shorts/events${document.location.search}`);
         events.addEventListener("history", event => {
-            count -= Number(event.data);
+            shortCount -= Number(event.data);
         });
         events.addEventListener("short", event => {
             const short = JSON.parse(event.data);
@@ -80,23 +81,24 @@
 
             link.appendChild(image);
             grid.prepend(link);
-            count++;
+            shortCount++;
+            if (shortCount > 0) {
+                channels.add(short.channel_id)
+            }
             if (grid.children.length > MAX_SHORTS) {
                 grid.lastElementChild.remove();
             }
         });
         function updateStats() {
-            document.getElementById("count").textContent = count.toLocaleString();
+            document.getElementById("short_count").textContent = shortCount.toLocaleString();
+            document.getElementById("channel_count").textContent = channels.size.toLocaleString();
             if (startTime !== null) {
                 const elapsed = (performance.now() - startTime) / 1000;
                 const hh = String(Math.floor(elapsed / 3600)).padStart(2, "0")
                 const mm = String(Math.floor(elapsed / 60) % 60).padStart(2, "0")
                 const ss = String(Math.floor(elapsed % 60)).padStart(2, "0")
                 document.getElementById("elapsed").textContent = `${hh}:${mm}:${ss}`;
-                document.getElementById("arrival").textContent = (count / (elapsed / 60)).toFixed(0);
-                if (count > 0) {
-                    document.getElementById("interval").textContent = (elapsed / count).toFixed(2) + "s";
-                }
+                document.getElementById("arrival").textContent = (shortCount / (elapsed / 60)).toFixed(0);
             }
         }
         setInterval(updateStats, 1000);
