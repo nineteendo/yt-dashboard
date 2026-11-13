@@ -2,6 +2,8 @@
 .DS_Store
 
 # Generated files
+channels.csv
+api_keys.json
 expiry.json
 
 # Byte-compiled / optimized / DLL files
