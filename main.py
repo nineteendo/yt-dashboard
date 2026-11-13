@@ -101,8 +101,13 @@ def _save_expiry(expiry: datetime):
 
 async def _subscribe_one(channel_id: str, http: httpx.AsyncClient):
     topic = f"{TOPIC_BASE_URL}?channel_id={channel_id}"
-    future = asyncio.get_running_loop().create_future()
-    pending[topic] = future
+    if (future := pending.get(topic)) is None:
+        future = asyncio.get_running_loop().create_future()
+        pending[topic] = future
+    elif future.done():
+        pending.pop(topic, None)
+        return future.result()
+
     payload = {
         "hub.callback": CALLBACK_URL,
         "hub.topic": topic,
@@ -113,12 +118,27 @@ async def _subscribe_one(channel_id: str, http: httpx.AsyncClient):
     try:
         response = await http.post(HUB_URL, data=payload)
         response.raise_for_status()
-        return await asyncio.wait_for(future, timeout=CONFIRM_TIMEOUT)
-    except (httpx.HTTPError, TimeoutError) as error:
-        log.warning("Subscription failed for %s: %s", channel_id, error)
-        return None
-    finally:
+    except httpx.HTTPError as error:
+        log.error(
+            "Subscription failed for %s (%s: %s)",
+            channel_id,
+            type(error).__qualname__,
+            error
+        )
         pending.pop(topic, None)
+        await asyncio.sleep(CONFIRM_TIMEOUT)
+        return None
+
+    try:
+        expiry = await asyncio.wait_for(
+            asyncio.shield(future), timeout=CONFIRM_TIMEOUT
+        )
+    except TimeoutError:
+        log.warning("Subscription timed out for %s", channel_id)
+        return None
+
+    pending.pop(topic, None)
+    return expiry
 
 
 async def _subscribe_all():
@@ -143,9 +163,10 @@ async def _subscribe_all():
                         expiries[channel] = expiry
 
                 log.debug(
-                    "Confirmed %d / %d subscriptions",
+                    "Confirmed %d / %d subscriptions (%d pending)",
                     len(expiries),
-                    len(channels)
+                    len(channels),
+                    len(pending)
                 )
 
     earliest_expiry = min(expiries.values())
