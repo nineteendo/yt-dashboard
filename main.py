@@ -7,19 +7,27 @@ from collections import deque
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Annotated, Any, Literal, TypeVarTuple
 
 import httpx
 import jsonyx as json
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Query, Request, Response
 from fastapi.responses import EventSourceResponse, FileResponse
+from pydantic import BaseModel, BeforeValidator
 
 # --------------------------------------------------
 # Configuration
 # --------------------------------------------------
 
+if TYPE_CHECKING:
+    # pylint: disable-next=W0404
+    from typing import Literal as IntLiteral
+else:
+    Ts = TypeVarTuple("Ts")
+    IntLiteral = Annotated[Literal[*Ts], BeforeValidator(int)]
+
 EVENT_TYPES = ["short", "video"]
-THRESHOLDS = [50, 500, 5000, 50000]
+THRESHOLDS: list[Literal[50, 500, 5000, 50000]] = [50, 500, 5000, 50000]
 CHANNEL_LIMIT = max(THRESHOLDS)
 BATCH_SIZE = 10
 EVENT_HISTORY = 1444
@@ -41,7 +49,7 @@ ATOM_NS = "http://www.w3.org/2005/Atom"
 YT_NS = "http://www.youtube.com/xml/schemas/2015"
 HUB_URL = "https://pubsubhubbub.appspot.com/subscribe"
 TOPIC_BASE_URL = "https://www.youtube.com/xml/feeds/videos.xml"
-CALLBACK_URL = "https://brim-panther-laziness.ngrok-free.dev/callback"
+CALLBACK_URL = "https://nicezombies.site/callback"
 SHORTS_BASE_URL = "https://www.youtube.com/shorts/"
 
 # --------------------------------------------------
@@ -237,20 +245,18 @@ async def _broadcast(event: dict[str, Any]):
                 event_condition.notify_all()
 
 
-async def _events(request: Request, event_type: str):
-    params = request.query_params
-    top = params.get("top", CHANNEL_LIMIT)
-    try:
-        top = int(top)
-        threshold = min(
-            (threshold for threshold in THRESHOLDS if threshold >= top),
-            default=CHANNEL_LIMIT,
-        )
-    except ValueError:
-        threshold = CHANNEL_LIMIT
+class _EventParams(BaseModel):
+    top: IntLiteral[50, 500, 5000, 50000] = CHANNEL_LIMIT
+    history: int = EVENT_HISTORY
+    replay: bool = False
 
+
+EventParams = Annotated[_EventParams, Query()]
+
+
+async def _events(event_type: str, params: EventParams):
     async def stream():
-        if params.get("replay", "0") == "1":
+        if params.replay:
             yield (
                 "event: history\n"
                 "data: 0\n\n"
@@ -273,13 +279,7 @@ async def _events(request: Request, event_type: str):
             return
 
         event_count = event_counts[event_key]
-        history = params.get("history", EVENT_HISTORY)
-        try:
-            last_event_id = event_count - int(history)
-        except ValueError:
-            log.warning("Invalid history: %s", history)
-            last_event_id = event_count - EVENT_HISTORY
-
+        last_event_id = event_count - params.history
         yield "retry: 5000\n\n"
         yield (
             "event: history\n"
@@ -305,7 +305,7 @@ async def _events(request: Request, event_type: str):
                     yield ": keep-alive\n\n"
                     continue
 
-    event_key = event_type, threshold
+    event_key = event_type, params.top
     return EventSourceResponse(
         stream(),
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
@@ -313,13 +313,13 @@ async def _events(request: Request, event_type: str):
 
 
 @app.get("/shorts/events")
-async def _short_events(request: Request):
-    return await _events(request, "short")
+async def _short_events(params: EventParams):
+    return await _events("short", params)
 
 
 @app.get("/videos/events")
-async def _video_events(request: Request):
-    return await _events(request, "video")
+async def _video_events(params: EventParams):
+    return await _events("video", params)
 
 
 # --------------------------------------------------
@@ -327,26 +327,20 @@ async def _video_events(request: Request):
 # --------------------------------------------------
 
 @app.get("/callback")
-def _callback_verification(request: Request):
-    params = request.query_params
-    mode = params.get("hub.mode")
-    topic = params.get("hub.topic")
-    challenge = params.get("hub.challenge")
-    lease_seconds = params.get("hub.lease_seconds")
-    if challenge is None:
-        return Response(status_code=400)
-
-    if mode == "subscribe" and topic is not None and lease_seconds is not None:
+def _callback_verification(
+    mode: Literal["subscribe", "unsubscribe"] = Query(alias="hub.mode"),
+    topic: str = Query(alias="hub.topic"),
+    challenge: str = Query(alias="hub.challenge"),
+    lease_seconds: int = Query(LEASE_SECONDS, alias="hub.lease_seconds")
+):
+    if mode == "subscribe":
         if (future := pending.get(topic)) and not future.done():
-            try:
-                future.set_result(
-                    datetime.now(UTC) + timedelta(seconds=int(lease_seconds))
-                )
-            except ValueError:
-                log.warning("Invalid lease duration for %s", topic)
+            future.set_result(
+                datetime.now(UTC) + timedelta(seconds=lease_seconds)
+            )
 
         log.debug("Subscription verified: %s", topic)
-    elif mode == "unsubscribe" and topic is not None:
+    else:
         log.debug("Unsubscription verified: %s", topic)
 
     return Response(challenge, media_type="text/plain")
@@ -410,20 +404,20 @@ async def _callback_notification(request: Request):
 # --------------------------------------------------
 
 @app.get("/shorts")
-def _all_shorts():
+def _all_shorts(_params: EventParams):
     return FileResponse(ALL_SHORTS_PAGE)
 
 
 @app.get("/shorts/latest")
-def _latest_short():
+def _latest_short(_params: EventParams):
     return FileResponse(LATEST_SHORT_PAGE)
 
 
 @app.get("/videos")
-def _all_videos():
+def _all_videos(_params: EventParams):
     return FileResponse(ALL_VIDEOS_PAGE)
 
 
 @app.get("/videos/latest")
-def _latest_video():
+def _latest_video(_params: EventParams):
     return FileResponse(LATEST_VIDEO_PAGE)
