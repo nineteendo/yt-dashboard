@@ -26,8 +26,10 @@ else:
     Ts = TypeVarTuple("Ts")
     IntLiteral = Annotated[Literal[*Ts], BeforeValidator(int)]
 
+Threshold = IntLiteral[50, 500, 5_000, 50_000]
+
 EVENT_TYPES = ["short", "video"]
-THRESHOLDS: list[Literal[50, 500, 5000, 50000]] = [50, 500, 5000, 50000]
+THRESHOLDS: list[Threshold] = [50, 500, 5_000, 50_000]
 CHANNEL_LIMIT = max(THRESHOLDS)
 BATCH_SIZE = 25
 EVENT_HISTORY = 1444
@@ -246,7 +248,7 @@ async def _broadcast(event: dict[str, Any]):
 
 
 class _EventParams(BaseModel):
-    top: IntLiteral[50, 500, 5000, 50000] = CHANNEL_LIMIT
+    top: Threshold = CHANNEL_LIMIT
     history: int = EVENT_HISTORY
     replay: bool = False
 
@@ -261,16 +263,18 @@ async def _events(event_type: str, params: EventParams):
                 "event: history\n"
                 "data: 0\n\n"
             )
-            last_timestamp = None
+            replay_offset = None
             for timestamp, message in best_event_windows[event_key]:
-                if last_timestamp is not None:
-                    await asyncio.sleep(timestamp - last_timestamp)
+                if replay_offset is None:
+                    replay_offset = time.monotonic() - timestamp
+                else:
+                    new_timestamp = timestamp + replay_offset
+                    await asyncio.sleep(new_timestamp - time.monotonic())
 
                 yield (
                     f"event: {event_type}\n"
                     f"data: {message}\n\n"
                 )
-                last_timestamp = timestamp
 
             yield (
                 "event: done\n"
