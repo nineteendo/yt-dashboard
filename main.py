@@ -30,6 +30,7 @@ Threshold = IntLiteral[50, 500, 5_000, 50_000]
 
 UPLOAD_TYPES = ["short", "video"]
 THRESHOLDS: list[Threshold] = [50, 500, 5_000, 50_000]
+OLD_CHANNEL_LIMIT = 50_000
 CHANNEL_LIMIT = max(THRESHOLDS)
 BATCH_SIZE = 25
 UPLOAD_HISTORY = 1444
@@ -40,8 +41,10 @@ CONFIRM_TIMEOUT = 1
 KEEPALIVE_TIMEOUT = 15
 
 BASE_DIR = Path(__file__).resolve().parent
+CHANNEL_ICON = BASE_DIR / "NZ1.png"
 CHANNELS_FILE = BASE_DIR / "channels.csv"
 EXPIRY_FILE = BASE_DIR / "expiry.json"
+LIVE_SUBSCRIPTIONS_PAGE = BASE_DIR / "index.html"
 ALL_SHORTS_PAGE = BASE_DIR / "shorts" / "index.html"
 LATEST_SHORT_PAGE = BASE_DIR / "shorts" / "latest.html"
 ALL_VIDEOS_PAGE = BASE_DIR / "videos" / "index.html"
@@ -85,7 +88,9 @@ upload_conditions = {
     (upload_type, threshold): asyncio.Condition()
     for threshold in THRESHOLDS for upload_type in UPLOAD_TYPES
 }
+subscription_condition = asyncio.Condition()
 pending: dict[str, asyncio.Future[Any]] = {}
+expiries: dict[str, float] = {}
 channels: dict[str, int] = {}
 
 
@@ -152,29 +157,31 @@ async def _subscribe_one(channel_id: str, http: httpx.AsyncClient):
 
 
 async def _subscribe_all():
+    new_channels = list(channels)[OLD_CHANNEL_LIMIT:]
     log.debug(
         "Starting subscription batch: %d channels, batch_size=%d",
-        len(channels),
+        len(new_channels),
         BATCH_SIZE
     )
-    expiries = {}
     async with httpx.AsyncClient() as http:
-        while len(expiries) < len(channels):
+        while len(expiries) < len(new_channels):
             missing = [
-                channel for channel in channels if channel not in expiries
+                channel for channel in new_channels if channel not in expiries
             ]
             for start in range(0, len(missing), BATCH_SIZE):
                 batch = missing[start: start + BATCH_SIZE]
                 results = await asyncio.gather(
                     *[_subscribe_one(channel, http) for channel in batch]
                 )
-                for channel, expiry in zip(batch, results):
-                    if expiry is not None:
-                        expiries[channel] = expiry
+                async with subscription_condition:
+                    for channel, expiry in zip(batch, results):
+                        if expiry is not None:
+                            expiries[channel] = expiry
+                            subscription_condition.notify_all()
 
                 log.debug(
                     "Confirmed %d / %d subscriptions (%d pending)",
-                    len(expiries),
+                    OLD_CHANNEL_LIMIT + len(expiries),
                     len(channels),
                     len(pending)
                 )
@@ -200,7 +207,6 @@ async def _subscription_manager():
 async def _lifespan(_app: FastAPI):
     with CHANNELS_FILE.open("r", encoding="utf-8-sig", newline="") as file:
         all_channel_ids = [channel["id"] for channel in csv.DictReader(file)]
-        channels.clear()
         channels.update({
             channel_id: i
             for i, channel_id in enumerate(all_channel_ids[0:CHANNEL_LIMIT])
@@ -217,6 +223,39 @@ async def _lifespan(_app: FastAPI):
 
 
 app = FastAPI(lifespan=_lifespan)
+
+
+# --------------------------------------------------
+# Subscription broadcasting
+# --------------------------------------------------
+
+@app.get("/events")
+async def _subscription_events():
+    async def stream():
+        yield "retry: 5000\n\n"
+        yield (
+            f"event: goal\n"
+            f"data: {len(channels)}\n\n"
+        )
+        while True:
+            yield (
+                f"event: subscriptions\n"
+                f"data: {OLD_CHANNEL_LIMIT + len(expiries)}\n\n"
+            )
+            async with subscription_condition:
+                try:
+                    await asyncio.wait_for(
+                        subscription_condition.wait(),
+                        timeout=KEEPALIVE_TIMEOUT
+                    )
+                except TimeoutError:
+                    yield ": keep-alive\n\n"
+                    continue
+
+    return EventSourceResponse(
+        stream(),
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # --------------------------------------------------
@@ -400,6 +439,16 @@ async def _callback_notification(request: Request):
 # --------------------------------------------------
 # Other endpoints
 # --------------------------------------------------
+
+@app.get("/")
+def _live_subscriptions():
+    return FileResponse(LIVE_SUBSCRIPTIONS_PAGE)
+
+
+@app.get("/NZ1.png")
+def _channel_icon():
+    return FileResponse(CHANNEL_ICON)
+
 
 @app.get("/shorts")
 def _all_shorts(_params: EventParams):
