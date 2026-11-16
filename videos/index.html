@@ -94,7 +94,7 @@
         });
         function updateStats() {
             document.getElementById("channel_count").textContent = channels.size.toLocaleString();
-            if (videoCount !== channels.size) {
+            if (videoCount > channels.size) {
                 document.getElementById("video_count").textContent = videoCount.toLocaleString();
             }
             const elapsed = (performance.now() - startTime) / 1000;
@@ -102,7 +102,9 @@
             const mm = String(Math.floor(elapsed / 60) % 60).padStart(2, "0")
             const ss = String(Math.floor(elapsed % 60)).padStart(2, "0")
             document.getElementById("elapsed").textContent = `${hh}:${mm}:${ss}`;
-            document.getElementById("arrival").textContent = (videoCount / (elapsed / 60)).toFixed(0);
+            if (videoCount >= 0) {
+                document.getElementById("arrival").textContent = (videoCount / (elapsed / 60)).toFixed(0);
+            }
         }
         setInterval(updateStats, 1000);
     </script>
