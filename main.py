@@ -28,11 +28,11 @@ else:
 
 Threshold = IntLiteral[50, 500, 5_000, 50_000]
 
-EVENT_TYPES = ["short", "video"]
+UPLOAD_TYPES = ["short", "video"]
 THRESHOLDS: list[Threshold] = [50, 500, 5_000, 50_000]
 CHANNEL_LIMIT = max(THRESHOLDS)
 BATCH_SIZE = 25
-EVENT_HISTORY = 1444
+UPLOAD_HISTORY = 1444
 
 LEASE_SECONDS = 864000
 RENEW_BEFORE = timedelta(days=1)
@@ -65,25 +65,25 @@ log.setLevel(logging.DEBUG)
 # Application state (memory only)
 # --------------------------------------------------
 
-event_windows: dict[tuple[str, int], deque[tuple[float, str]]] = {
-    (event_type, threshold): deque()
-    for threshold in THRESHOLDS for event_type in EVENT_TYPES
+upload_windows: dict[tuple[str, int], deque[tuple[float, str]]] = {
+    (upload_type, threshold): deque()
+    for threshold in THRESHOLDS for upload_type in UPLOAD_TYPES
 }
-best_event_windows: dict[tuple[str, int], deque[tuple[float, str]]] = {
-    (event_type, threshold): deque()
-    for threshold in THRESHOLDS for event_type in EVENT_TYPES
+best_upload_windows: dict[tuple[str, int], deque[tuple[float, str]]] = {
+    (upload_type, threshold): deque()
+    for threshold in THRESHOLDS for upload_type in UPLOAD_TYPES
 }
-event_queues: dict[tuple[str, int], deque[str]] = {
-    (event_type, threshold): deque(maxlen=EVENT_HISTORY)
-    for threshold in THRESHOLDS for event_type in EVENT_TYPES
+upload_queues: dict[tuple[str, int], deque[str]] = {
+    (upload_type, threshold): deque(maxlen=UPLOAD_HISTORY)
+    for threshold in THRESHOLDS for upload_type in UPLOAD_TYPES
 }
-event_counts = {
-    (event_type, threshold): 0
-    for threshold in THRESHOLDS for event_type in EVENT_TYPES
+upload_counts = {
+    (upload_type, threshold): 0
+    for threshold in THRESHOLDS for upload_type in UPLOAD_TYPES
 }
-event_conditions = {
-    (event_type, threshold): asyncio.Condition()
-    for threshold in THRESHOLDS for event_type in EVENT_TYPES
+upload_conditions = {
+    (upload_type, threshold): asyncio.Condition()
+    for threshold in THRESHOLDS for upload_type in UPLOAD_TYPES
 }
 pending: dict[str, asyncio.Future[Any]] = {}
 channels: dict[str, int] = {}
@@ -220,43 +220,43 @@ app = FastAPI(lifespan=_lifespan)
 
 
 # --------------------------------------------------
-# SSE broadcasting
+# Upload broadcasting
 # --------------------------------------------------
 
-async def _broadcast(event: dict[str, Any]):
-    if event["url"].startswith(SHORTS_BASE_URL):
-        event_type = "short"
+async def _broadcast_upload(upload: dict[str, Any]):
+    if upload["url"].startswith(SHORTS_BASE_URL):
+        upload_type = "short"
     else:
-        event_type = "video"
+        upload_type = "video"
 
     loop = asyncio.get_running_loop()
     now = time.monotonic()
-    message = json.dumps(event, end="", separators=(",", ":"))
+    message = json.dumps(upload, end="", separators=(",", ":"))
     for threshold in THRESHOLDS:
-        event_key = event_type, threshold
-        if channels[event["channel_id"]] < threshold:
-            event_window = event_windows[event_key]
-            event_window.append((now, message))
-            loop.call_later(60, event_window.popleft)
-            if len(event_window) > len(best_event_windows[event_key]):
-                best_event_windows[event_key] = event_window.copy()
+        upload_key = upload_type, threshold
+        if channels[upload["channel_id"]] < threshold:
+            upload_window = upload_windows[upload_key]
+            upload_window.append((now, message))
+            loop.call_later(60, upload_window.popleft)
+            if len(upload_window) > len(best_upload_windows[upload_key]):
+                best_upload_windows[upload_key] = upload_window.copy()
 
-            async with (event_condition := event_conditions[event_key]):
-                event_counts[event_key] += 1
-                event_queues[event_key].append(message)
-                event_condition.notify_all()
+            async with (upload_condition := upload_conditions[upload_key]):
+                upload_counts[upload_key] += 1
+                upload_queues[upload_key].append(message)
+                upload_condition.notify_all()
 
 
 class _EventParams(BaseModel):
     top: Threshold = CHANNEL_LIMIT
-    history: int = EVENT_HISTORY
+    history: int = UPLOAD_HISTORY
     replay: bool = False
 
 
 EventParams = Annotated[_EventParams, Query()]
 
 
-async def _events(event_type: str, params: EventParams):
+async def _upload_events(upload_type: str, params: EventParams):
     async def stream():
         if params.replay:
             yield (
@@ -264,7 +264,7 @@ async def _events(event_type: str, params: EventParams):
                 "data: 0\n\n"
             )
             replay_offset = None
-            for timestamp, message in best_event_windows[event_key]:
+            for timestamp, message in best_upload_windows[upload_key]:
                 if replay_offset is None:
                     replay_offset = time.monotonic() - timestamp
                 else:
@@ -272,7 +272,7 @@ async def _events(event_type: str, params: EventParams):
                     await asyncio.sleep(new_timestamp - time.monotonic())
 
                 yield (
-                    f"event: {event_type}\n"
+                    f"event: {upload_type}\n"
                     f"data: {message}\n\n"
                 )
 
@@ -282,34 +282,34 @@ async def _events(event_type: str, params: EventParams):
             )
             return
 
-        event_count = event_counts[event_key]
-        last_event_id = event_count - params.history
+        upload_count = upload_counts[upload_key]
+        last_upload_id = upload_count - params.history
         yield "retry: 5000\n\n"
         yield (
             "event: history\n"
-            f"data: {max(0, event_count - max(0, last_event_id))}\n\n"
+            f"data: {max(0, upload_count - max(0, last_upload_id))}\n\n"
         )
         while True:
-            event_queue = event_queues[event_key]
-            event_count = event_counts[event_key]
-            start = max(0, len(event_queue) - event_count + last_event_id)
-            for i in range(start, len(event_queue)):
+            upload_queue = upload_queues[upload_key]
+            upload_count = upload_counts[upload_key]
+            start = max(0, len(upload_queue) - upload_count + last_upload_id)
+            for i in range(start, len(upload_queue)):
                 yield (
-                    f"event: {event_type}\n"
-                    f"data: {event_queue[i]}\n\n"
+                    f"event: {upload_type}\n"
+                    f"data: {upload_queue[i]}\n\n"
                 )
 
-            last_event_id = event_count
-            async with (event_condition := event_conditions[event_key]):
+            last_upload_id = upload_count
+            async with (upload_condition := upload_conditions[upload_key]):
                 try:
                     await asyncio.wait_for(
-                        event_condition.wait(), timeout=KEEPALIVE_TIMEOUT
+                        upload_condition.wait(), timeout=KEEPALIVE_TIMEOUT
                     )
                 except TimeoutError:
                     yield ": keep-alive\n\n"
                     continue
 
-    event_key = event_type, params.top
+    upload_key = upload_type, params.top
     return EventSourceResponse(
         stream(),
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
@@ -318,12 +318,12 @@ async def _events(event_type: str, params: EventParams):
 
 @app.get("/shorts/events")
 async def _short_events(params: EventParams):
-    return await _events("short", params)
+    return await _upload_events("short", params)
 
 
 @app.get("/videos/events")
 async def _video_events(params: EventParams):
-    return await _events("video", params)
+    return await _upload_events("video", params)
 
 
 # --------------------------------------------------
@@ -366,8 +366,8 @@ async def _callback_notification(request: Request):
             return None if element is None else element.text
 
         link = entry.find(f"{{{ATOM_NS}}}link")
-        video = {
-            "video_id": get_text(YT_NS, "videoId"),
+        upload = {
+            "id": get_text(YT_NS, "videoId"),
             "channel_id": get_text(YT_NS, "channelId"),
             "title": get_text(ATOM_NS, "title"),
             "published": get_text(ATOM_NS, "published"),
@@ -375,30 +375,24 @@ async def _callback_notification(request: Request):
             "url": None if link is None else link.get("href"),
         }
         if (
-            video["video_id"] is not None
-            and video["channel_id"] is not None
-            and video["title"] is not None
-            and video["published"] is not None
-            and video["updated"] is not None
-            and video["url"] is not None
+            upload["id"] is not None
+            and upload["channel_id"] is not None
+            and upload["title"] is not None
+            and upload["published"] is not None
+            and upload["updated"] is not None
+            and upload["url"] is not None
         ):
             if (
-                video["channel_id"] in channels
+                upload["channel_id"] in channels
                 and timedelta(minutes=1) <= (
-                    datetime.fromisoformat(video["updated"])
-                    - datetime.fromisoformat(video["published"])
+                    datetime.fromisoformat(upload["updated"])
+                    - datetime.fromisoformat(upload["published"])
                 ) <= timedelta(minutes=1, seconds=5)
             ):
-                log.debug(
-                    "New video: %s (%s)", video["title"], video["channel_id"]
-                )
-                await _broadcast(video)
+                log.debug("New upload: %s", upload["title"])
+                await _broadcast_upload(upload)
             else:
-                log.debug(
-                    "Ignoring video: %s (%s)",
-                    video["title"],
-                    video["channel_id"]
-                )
+                log.debug("Ignoring upload: %s", upload["title"])
 
     return Response(status_code=204)
 
