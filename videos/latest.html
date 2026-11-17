@@ -36,12 +36,11 @@
                 const video = JSON.parse(event.data);
                 const activeState = players[activeIndex].getPlayerState();
                 const inactiveState = players[1 - activeIndex].getPlayerState();
-                if (![activeState, inactiveState].includes(YT.PlayerState.BUFFERING)) {
-                    if ([YT.PlayerState.UNSTARTED, YT.PlayerState.ENDED, YT.PlayerState.PLAYING].includes(activeState)) {
-                        players[1 - activeIndex].loadVideoById(video.id);
-                    } else {
-                        players[1 - activeIndex].cueVideoById(video.id);
-                    }
+                if (
+                    [YT.PlayerState.UNSTARTED, YT.PlayerState.ENDED, YT.PlayerState.PLAYING].includes(activeState)
+                    && inactiveState !== YT.PlayerState.BUFFERING
+                ) {
+                    players[1 - activeIndex].loadVideoById(video.id);
                 }
             });
             events.addEventListener("done", event => {
@@ -63,10 +62,7 @@
                         }
                     },
                     onStateChange: event => {
-                        if (
-                            activeIndex !== index
-                            && [YT.PlayerState.PLAYING, YT.PlayerState.CUED].includes(event.data)
-                        ) {
+                        if (activeIndex !== index && event.data === YT.PlayerState.PLAYING) {
                             const state = players[1 - index].getPlayerState();
                             const muted = players[1 - index].isMuted();
                             players[1 - index].pauseVideo();
