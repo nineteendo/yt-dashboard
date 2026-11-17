@@ -134,9 +134,8 @@
 
             if (goal !== null) {
                 const progress = Math.min(newCount / goal * 100, 100);
-                bar.style.width = `${progress}%`;
-                percentage.textContent = `${progress.toFixed(2)}% complete`;
-                target.textContent = `${goal.toLocaleString()} goal`;
+                document.getElementById("bar").style.width = `${progress}%`;
+                document.getElementById("percentage").textContent = `${progress.toFixed(2)}% complete`;
             }
 
             if (count === null) {
@@ -170,6 +169,7 @@
         const events = new EventSource("/events");
         events.addEventListener("goal", event => {
             goal = Number(event.data);
+            document.getElementById("target").textContent = `${goal.toLocaleString()} goal`;
         });
         events.addEventListener("subscriptions", event => {
             updateCount(Number(event.data));
