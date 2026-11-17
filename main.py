@@ -242,15 +242,16 @@ async def _subscription_events():
                 f"event: subscriptions\n"
                 f"data: {OLD_CHANNEL_LIMIT + len(expiries)}\n\n"
             )
-            async with subscription_condition:
-                try:
-                    await asyncio.wait_for(
-                        subscription_condition.wait(),
-                        timeout=KEEPALIVE_TIMEOUT
-                    )
-                except TimeoutError:
-                    yield ": keep-alive\n\n"
-                    continue
+            while True:
+                async with subscription_condition:
+                    try:
+                        await asyncio.wait_for(
+                            subscription_condition.wait(),
+                            timeout=KEEPALIVE_TIMEOUT
+                        )
+                        break
+                    except TimeoutError:
+                        yield ": keep-alive\n\n"
 
     return EventSourceResponse(
         stream(),
@@ -346,7 +347,6 @@ async def _upload_events(upload_type: str, params: EventParams):
                     )
                 except TimeoutError:
                     yield ": keep-alive\n\n"
-                    continue
 
     upload_key = upload_type, params.top
     return EventSourceResponse(
