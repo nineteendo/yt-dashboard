@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <head>
     <title>Live YouTube Subscriptions</title>
@@ -11,6 +10,29 @@
             background: #111827;
             color: #f9fafb;
             font-family: system-ui, sans-serif;
+        }
+
+        .navbar {
+            position: absolute;
+            top: 0;
+            width: 100%;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 28px;
+            border-bottom: 1px solid #374151;
+        }
+
+        .navbar a {
+            color: #9ca3af;
+            font-size: 14px;
+            text-decoration: none;
+            transition: color 150ms ease;
+        }
+
+        .navbar a:hover {
+            color: #93b4dc;
         }
 
         img {
@@ -85,6 +107,12 @@
     </style>
 </head>
 <body>
+    <nav class="navbar">
+        <a href="/videos?top=50000&history=1444&replay=0">All YouTube Videos</a>
+        <a href="/videos/latest?top=50000&replay=0">Latest YouTube Video</a>
+        <a href="/shorts?top=50000&history=1444&replay=0">All YouTube Shorts</a>
+        <a href="/shorts/latest?top=50000&replay=0">Latest YouTube Short</a>
+    </nav>
     <main>
         <img src="/NZ1.png" alt="Nice Zombies logo">
         <h1>Nice Zombies</h1>
