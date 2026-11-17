@@ -26,11 +26,11 @@ else:
     Ts = TypeVarTuple("Ts")
     IntLiteral = Annotated[Literal[*Ts], BeforeValidator(int)]
 
-Threshold = IntLiteral[50, 500, 5_000, 50_000]
+Threshold = IntLiteral[50, 500, 5_000, 50_000, 500_000]
 
 UPLOAD_TYPES = ["short", "video"]
-THRESHOLDS: list[Threshold] = [50, 500, 5_000, 50_000]
-OLD_CHANNEL_LIMIT = 50_000
+THRESHOLDS: list[Threshold] = [50, 500, 5_000, 50_000, 500_000]
+OLD_CHANNEL_LIMIT = 500_000
 CHANNEL_LIMIT = max(THRESHOLDS)
 BATCH_SIZE = 25
 UPLOAD_HISTORY = 1444
