@@ -242,6 +242,13 @@ async def _subscription_events():
                 f"event: subscriptions\n"
                 f"data: {OLD_CHANNEL_LIMIT + len(expiries)}\n\n"
             )
+            if OLD_CHANNEL_LIMIT + len(expiries) == len(channels):
+                yield (
+                    "event: done\n"
+                    "data: \n\n"
+                )
+                break
+
             while True:
                 async with subscription_condition:
                     try:
