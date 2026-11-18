@@ -22,9 +22,33 @@
         #player-a:not(.active), #player-b:not(.active) {
             display: none;
         }
+
+        #stats {
+            position: fixed;
+            bottom: 0;
+            right: 0;
+            padding: 12px 16px;
+            background-color: #000d;
+            color: #fff;
+            font-family: monospace;
+        }
+
+        #stats span {
+            display: block;
+            color: #aaa;
+            font-size: 10px;
+            text-transform: uppercase;
+        }
+
+        #stats strong {
+            font-size: 20px;
+        }
     </style>
 </head>
 <body>
+    <div id="stats">
+        <div><span>Avg watch time</span><strong id="watched">&mdash;s</strong></div>
+    </div>
     <div id="player-a"></div>
     <div id="player-b"></div>
     <script>
@@ -43,9 +67,17 @@
                     players[1 - activeIndex].loadVideoById(short.id);
                 }
             });
+            function updateStats() {
+                const elapsed = (performance.now() - startTime) / 1000;
+                if (count > 0) {
+                    document.getElementById("watched").textContent = (elapsed / count).toFixed(2) + "s";
+                }
+            }
+            const refreshIntervalId = setInterval(updateStats, 1000);
             events.addEventListener("done", event => {
                 events.close();
                 players[activeIndex].pauseVideo();
+                clearInterval(refreshIntervalId);
             });
         }
 
@@ -64,6 +96,7 @@
                     },
                     onStateChange: event => {
                         if (activeIndex !== index && event.data === YT.PlayerState.PLAYING) {
+                            count++;
                             const state = players[1 - index].getPlayerState();
                             const muted = players[1 - index].isMuted();
                             players[1 - index].pauseVideo();
@@ -88,6 +121,8 @@
         let players;
         let ready = 0;
         let activeIndex = 0;
+        let count = 0;
+        const startTime = performance.now();
         window.onYouTubeIframeAPIReady = () => {
             players = [
                 createPlayer("player-a", "player-b", 0),
