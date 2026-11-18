@@ -90,9 +90,6 @@
                 grid.lastElementChild.remove();
             }
         });
-        events.addEventListener("done", event => {
-            events.close();
-        });
         function updateStats() {
             document.getElementById("channel_count").textContent = channels.size.toLocaleString();
             if (videoCount > channels.size) {
@@ -107,7 +104,11 @@
                 document.getElementById("arrival").textContent = (videoCount / (elapsed / 60)).toFixed(0);
             }
         }
-        setInterval(updateStats, 1000);
+        const refreshIntervalId = setInterval(updateStats, 1000);
+        events.addEventListener("done", event => {
+            events.close();
+            clearInterval(refreshIntervalId);
+        });
     </script>
 </body>
 </html>

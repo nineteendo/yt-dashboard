@@ -45,6 +45,7 @@
             });
             events.addEventListener("done", event => {
                 events.close();
+                players[activeIndex].pauseVideo();
             });
         }
 
