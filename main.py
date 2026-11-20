@@ -294,16 +294,16 @@ async def _broadcast_upload(upload: dict[str, Any]):
                 upload_condition.notify_all()
 
 
-class _EventParams(BaseModel):
+class _UploadParams(BaseModel):
     top: Threshold = CHANNEL_LIMIT
     history: int = UPLOAD_HISTORY
     replay: bool = False
 
 
-EventParams = Annotated[_EventParams, Query()]
+UploadParams = Annotated[_UploadParams, Query()]
 
 
-async def _upload_events(upload_type: str, params: EventParams):
+async def _upload_events(upload_type: str, params: UploadParams):
     async def stream():
         if params.replay:
             yield (
@@ -363,12 +363,12 @@ async def _upload_events(upload_type: str, params: EventParams):
 
 
 @app.get("/shorts/events")
-async def _short_events(params: EventParams):
+async def _short_events(params: UploadParams):
     return await _upload_events("short", params)
 
 
 @app.get("/videos/events")
-async def _video_events(params: EventParams):
+async def _video_events(params: UploadParams):
     return await _upload_events("video", params)
 
 
@@ -458,20 +458,20 @@ def _channel_icon():
 
 
 @app.get("/shorts")
-def _all_shorts(_params: EventParams):
+def _all_shorts(_params: UploadParams):
     return FileResponse(ALL_SHORTS_PAGE)
 
 
 @app.get("/shorts/latest")
-def _latest_short(_params: EventParams):
+def _latest_short(_params: UploadParams):
     return FileResponse(LATEST_SHORT_PAGE)
 
 
 @app.get("/videos")
-def _all_videos(_params: EventParams):
+def _all_videos(_params: UploadParams):
     return FileResponse(ALL_VIDEOS_PAGE)
 
 
 @app.get("/videos/latest")
-def _latest_video(_params: EventParams):
+def _latest_video(_params: UploadParams):
     return FileResponse(LATEST_VIDEO_PAGE)
