@@ -3,11 +3,12 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from itertools import batched, islice
 from typing import Any
 
 import jsonyx as json
 
-API_KEY = json.read("api_key.json")[0]
+API_KEY = json.read("api_keys.json")[0]
 API_BASE_URL = "https://www.googleapis.com/youtube/v3/channels"
 
 INPUT_FILE = "channels.csv"
@@ -155,30 +156,25 @@ def _get_row(channel: dict[str, Any]):
 
 
 def _main():
-    with open(INPUT_FILE, "r", encoding="utf-8-sig", newline="") as file:
-        channel_ids = [row["id"] for row in csv.DictReader(file)]
-
-    total = len(channel_ids)
-    print(f"Found {total:,} channel IDs.")
     fetched = 0
     missing = 0
-    with open(OUTPUT_FILE, "w", newline="", encoding="utf-8-sig") as file:
-        writer = csv.DictWriter(file, fieldnames=COLUMNS)
+    with (
+        open(INPUT_FILE, "r", encoding="utf-8-sig", newline="") as infile,
+        open(OUTPUT_FILE, "w", newline="", encoding="utf-8-sig") as outfile
+    ):
+        channel_ids = (row["id"] for row in csv.DictReader(infile))
+        channel_ids = islice(channel_ids, 0 * 50, None)
+        writer = csv.DictWriter(outfile, fieldnames=COLUMNS)
         writer.writeheader()
-        for i, start in enumerate(range(0, len(channel_ids), BATCH_SIZE)):
-            batch = channel_ids[start: start + BATCH_SIZE]
+        for i, batch in enumerate(batched(channel_ids, BATCH_SIZE), start=1):
             response = _fetch_channels(batch)
             for channel in (channels := response.get("items", [])):
                 writer.writerow(_get_row(channel))
 
             fetched += len(channels)
             missing += len(batch) - len(channels)
-            file.flush()
-            print(
-                f"Batch {i}: "
-                f"{fetched:,}/{total:,} fetched "
-                f"({missing:,} unavailable)"
-            )
+            outfile.flush()
+            print(f"Batch {i}: {fetched:,} fetched ({missing:,} unavailable)")
 
     print(f"\nFinished. Exported {fetched:,} channels to {OUTPUT_FILE}.")
 
