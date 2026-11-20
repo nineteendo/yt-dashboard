@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 from collections import deque
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime, timedelta
+from itertools import islice
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal, TypeVarTuple
 
@@ -45,6 +46,7 @@ CHANNEL_ICON = BASE_DIR / "NZ1.png"
 CHANNELS_FILE = BASE_DIR / "channels.csv"
 EXPIRY_FILE = BASE_DIR / "expiry.json"
 LIVE_SUBSCRIPTIONS_PAGE = BASE_DIR / "index.html"
+CHANNELS_PAGE = BASE_DIR / "channels.html"
 ALL_SHORTS_PAGE = BASE_DIR / "shorts" / "index.html"
 LATEST_SHORT_PAGE = BASE_DIR / "shorts" / "latest.html"
 ALL_VIDEOS_PAGE = BASE_DIR / "videos" / "index.html"
@@ -455,6 +457,23 @@ def _live_subscriptions():
 @app.get("/NZ1.png")
 def _channel_icon():
     return FileResponse(CHANNEL_ICON)
+
+
+@app.get("/channels")
+def _channels(
+    page: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=1_000),
+):
+    return FileResponse(CHANNELS_PAGE)
+
+
+@app.get("/channels/list")
+def _channels_list(
+    page: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=1_000),
+):
+    with CHANNELS_FILE.open("r", encoding="utf-8-sig", newline="") as file:
+        return list(
+            islice(csv.DictReader(file), page * limit, page * limit + limit)
+        )
 
 
 @app.get("/shorts")

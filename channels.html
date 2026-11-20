@@ -1,0 +1,160 @@
+
+<!DOCTYPE html>
+<head>
+    <title>All YouTube Channels</title>
+    <style>
+        body {
+            margin: 24px;
+            background: #111827;
+            color: #e5e7eb;
+            font-family: system-ui, sans-serif;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            border-radius: 8px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            white-space: nowrap;
+            font-size: 13px;
+        }
+
+        th, td {
+            padding: 12px 14px;
+            text-align: left;
+        }
+
+        th {
+            background: #374151;
+            color: #9ca3af;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+        }
+
+        tbody tr:nth-child(2n) {
+            background: #1f2937;
+        }
+
+        .number {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .name a {
+            color: #93b4dc;
+            font-weight: 600;
+            text-decoration: none;
+        }
+
+        .handle, .muted {
+            color: #9ca3af;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 3px 7px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+
+        .badge.yes {
+            background: #164e36;
+            color: #86efac;
+        }
+
+        .badge.no {
+            background: #374151;
+            color: #9ca3af;
+        }
+    </style>
+</head>
+<body>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Channel</th>
+                    <th>Handle</th>
+                    <th>Country</th>
+                    <th class="number">Subscribers</th>
+                    <th class="number">Views</th>
+                    <th class="number">Videos</th>
+                    <th>For kids</th>
+                    <th>Topics</th>
+                    <th>Subtopics</th>
+                </tr>
+            </thead>
+            <tbody id="channels">
+                <tr><td colspan="9" class="muted">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <script>
+        function link(name, id) {
+            const td = document.createElement("td");
+            td.className = "name";
+            const a = document.createElement("a");
+            a.href = `https://www.youtube.com/channel/${id}`;
+            a.textContent = name;
+            a.target = "_blank";
+            a.rel = "noopener";
+            td.append(a);
+            return td;
+        }
+        
+        function cell(value, className = "") {
+            const td = document.createElement("td");
+            td.className = className;
+            td.textContent = value;
+            return td;
+        }
+
+        function badge(value) {
+            const td = document.createElement("td");
+            const span = document.createElement("span");
+            span.className = `badge ${value ? "yes" : "no"}`;
+            span.textContent = value ? "Yes" : "No";
+            td.append(span);
+            return td;
+        }
+
+        function renderChannel(channel) {
+            const tr = document.createElement("tr");
+            tr.append(
+                link(channel.name, channel.id),
+                cell(channel.handle, "handle"),
+                cell(channel.country),
+                cell(Number(channel.subscribers).toLocaleString(), "number"),
+                cell(Number(channel.views).toLocaleString(), "number"),
+                cell(Number(channel.videos).toLocaleString(), "number"),
+                badge(channel.for_kids == "True"),
+                cell(channel.topics),
+                cell(channel.sub_topics)
+            );
+            return tr;
+        }
+
+        async function loadChannels() {
+            const tbody = document.getElementById("channels");
+            const response = await fetch(`/channels/list${document.location.search}`);
+            const channels = await response.json();
+            const fragment = document.createDocumentFragment();
+            for (const channel of channels) {
+                fragment.append(renderChannel(channel));
+            }
+
+            tbody.replaceChildren(fragment);
+            if (channels.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="muted">No channels found.</td></tr>';
+            }
+        }
+
+        loadChannels();
+    </script>
+</body>
+</html>
