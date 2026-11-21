@@ -1,4 +1,5 @@
 import csv
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -142,7 +143,7 @@ def _get_row(channel: dict[str, Any]):
 
     return {
         "id": channel["id"],
-        "created": snippet.get("publishedAt"),
+        "created": re.sub(r"\.\d+", "", snippet.get("publishedAt")),
         "name": snippet.get("title"),
         "handle": snippet.get("customUrl"),
         "country": snippet.get("country"),
