@@ -104,7 +104,7 @@ def _fetch_channels(channel_ids: list[str]):
     request = urllib.request.Request(url)
     for attempt in range(5):
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with urllib.request.urlopen(request) as response:
                 return json.load(response)
         except urllib.error.HTTPError as error:
             body = error.read().decode("utf-8", errors="replace")
